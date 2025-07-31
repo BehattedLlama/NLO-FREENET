@@ -99,7 +99,83 @@ Detailed analysis (per relayer):
    - probabilityReport.txt: 
     Contains Levine Method analysis results, identifying anomalous request patterns and calculating false positive rates.
 
-Requirements & Dependencies
+# Post-processing and Formatting Workflow
+
+After the initial log parsing and Levine Method analysis, additional steps are taken to identify and isolate relevant false-positive request runs and prepare data for input into the FTS Tool spreadsheet.
+
+This secondary workflow involves three scripts executed in the following order:  
+## false_positive_report.py
+
+Purpose: Scans each File*/Relayer* folder's probabilityReport.txt to detect relayers that recorded one or more false-positive request runs. The identified relayers and their false-positive counts are summarized into a single report (false_positives_report.txt).
+
+Usage: Arg is file number(s) to analyze
+```
+python false_positive_report.py 1 2 3 ... 12
+```
+  Generates false_positives_report.txt containing a list of relayers with false-positive runs.  
+  Manually review this report to determine which File*/Relayer* folders are relevant for further analysis.  
+
+## Manual Step: Copy Relevant Relayer Folders
+
+Based on the output from false_positive_report.py, manually copy each relevant File*/Relayer* folder into a new, separate directory. This directory will serve as your working set for detailed peer-request analysis and formatting.
+## extract_peer_requests.py
+
+Purpose: From the copied relayer folders, isolates all requests associated with IP addresses that had request runs passing the Levine Method, as identified within each relayer's probabilityReport.txt.
+
+Usage:
+```
+python extract_peer_requests.py
+```
+  For each IP:port identified, creates a new text file (requests_[IP_Port].txt) containing only requests associated with that peer.  
+
+  Each output file is saved within its respective relayer folder.  
+
+## FTS-Reformat.py
+
+Purpose: Reformats extracted peer request files into a concise, tab-delimited format required by the FTS Tool spreadsheet. This includes converting request timestamps into Excel-compatible serial dates and selecting essential fields.
+
+Output columns include:
+
+   - Date/Time (Excel serial format)
+
+   - Port (Blank)
+
+   - Type (R for data requests, I for inserts)
+
+   - HTL (Hops To Live)
+
+   - Total Blocks
+
+   - Data Blocks
+
+   - Peers (Count)
+
+   - LE ID (Peer IP:Port)
+
+   - Split Keys (Request keys)
+
+Usage:
+```
+python FTS-Reformat.py
+```
+  Processes all requests_[IP_Port].txt files created by extract_peer_requests.py.  
+
+  Generates corresponding summary_ready_[IP_Port].txt files, formatted and ready to copy directly into the FTS spreadsheet.  
+
+🗃️ Workflow Summary  
+
+Raw Logs  
+  └── Initial Parsing & Levine Method Analysis  
+        └──── false_positive_report.py  
+              └────── Manually copy relevant Relayer folders  
+                    └──────── extract_peer_requests.py  
+                          └─────────── FTS-Reformat.py  
+                                └───────────── FTS Spreadsheet (only available through discovery subject to protective order)
+
+This streamlined workflow allows precise and efficient data extraction, ensuring accurate analysis and straightforward input into forensic analysis tools.  
+
+
+# Requirements & Dependencies
 
   - Perl (for .pl scripts)
   - PowerShell (for running the main orchestration script)
