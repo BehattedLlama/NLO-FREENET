@@ -3,19 +3,16 @@ from pathlib import Path
 import re
 
 def main(args):
-    base = Path.cwd()
-    if not (base / 'gcloud').is_dir():
-        print("Script must be run from directory containing the gcloud folder.")
-        sys.exit(1)
+    base = Path.cwd()  # The directory the script is executed from
 
     files = [f'File{num}' for num in args]
-    output_path = base / 'gcloud' / 'false_positives_report.txt'
+    output_path = base / 'false_positives_report.txt'
 
     for_report_line = re.compile(r'Number of False Positive Runs:\s*(\d+)')
 
     with output_path.open('w', encoding='utf-8') as outf:
         for file in files:
-            filedir = base / 'gcloud' / file
+            filedir = base / file
             outf.write(f"{file}:\n")
             found_any = False
             for i in range(1, 36):
@@ -35,7 +32,6 @@ def main(args):
             full_download_path = filedir / 'fullDownloadReport.txt'
             if full_download_path.is_file():
                 outf.write("\n")
-                # Try reading as utf-8 first, then fallback to utf-16
                 try:
                     with full_download_path.open('r', encoding='utf-8') as f:
                         lines = f.readlines()
@@ -48,6 +44,6 @@ def main(args):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python false_positive_report.py 1 2 3 ... 11")
+        print("Usage: python false_positive_report.py 1 2 3 ... 12")
         sys.exit(1)
     main(sys.argv[1:])
