@@ -12,37 +12,37 @@ This repository contains scripts designed to analyze outgoing request logs from 
 
 ## Directory Structure (Example)
 
-After processing logs, your directory structure will look similar to this:  
-
-File1/  
-├── avgTimingReport.txt  
-├── duplicatesReport.txt  
-├── fullDownloadReport.txt  
-├── generateCSV2.ps1  
-├── insertsReport.txt  
-├── instanceNames.txt  
-├── Metadata.txt  
-├── Requests.txt  
-├── downloader/  
-│ ├── downloadRequests.txt  
-│ ├── requestsLocs.txt  
-│ ├── avgPeers.txt  
-│ ├── sentToPeer.txt  
-│ ├── probabilityReport.txt  
-│ ├── requestTimestamps*.txt  
-│ ├── keys*.txt  
-│ ├── requests*.txt  
-│ ├── requestIntervals*.txt  
-│ ├── avgIntervals*.txt  
-│ ├── duplicates.txt  
-│ ├── inserts.txt  
-│ ├── dataRequestsOnly*.txt  
-│ ├── dataRequestsNum.txt  
-│ └── HTL.txt  
-├── Relayer1/  
-│ └── [similar structure as downloader/]  
-└── Relayer.../  
-File2/  
+After processing logs, your working directory structure will look similar to this:  
+Working/
+├──File1/  
+| ├── avgTimingReport.txt  
+| ├── duplicatesReport.txt  
+| ├── fullDownloadReport.txt  
+| ├── generateCSV2.ps1  
+| ├── insertsReport.txt  
+| ├── instanceNames.txt  
+| ├── Metadata.txt  
+| ├── Requests.txt  
+| ├── downloader/  
+| │ ├── downloadRequests.txt  
+│ │ ├── requestsLocs.txt  
+│ │ ├── avgPeers.txt  
+│ │ ├── sentToPeer.txt  
+│ │ ├── probabilityReport.txt  
+│ │ ├── requestTimestamps*.txt  
+│ │ ├── keys*.txt  
+│ │ ├── requests*.txt  
+│ │ ├── requestIntervals*.txt  
+│ │ ├── avgIntervals*.txt  
+│ │ ├── duplicates.txt  
+│ │ ├── inserts.txt  
+│ │ ├── dataRequestsOnly*.txt  
+│ │ ├── dataRequestsNum.txt  
+│ │ └── HTL.txt  
+│ ├── Relayer1/  
+│ │ └── [similar structure as downloader/]  
+└─└── Relayer.../  
+└──File2/  
   [similar structure as File1/]  
   
 ---
