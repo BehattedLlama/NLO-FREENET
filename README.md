@@ -13,7 +13,7 @@ This repository contains scripts designed to analyze outgoing request logs from 
 ## Directory Structure (Example)
 
 After processing logs, your working directory structure will look similar to this:  
-Working/
+Working/  
 ├──File1/  
 | ├── avgTimingReport.txt  
 | ├── duplicatesReport.txt  
