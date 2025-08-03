@@ -14,7 +14,7 @@ import time
 # ---- Globals controlled by CLI ----
 FORCE_REPROCESS = False
 
-# ---- Constants matching original Perl logic ----
+# ---- Constants matching Levine simplifying assumption constants and run logic ----
 RUN_MIN_REQUESTS = 20
 PROB_THRESHOLD = 0.98
 
@@ -130,7 +130,7 @@ def ensure_dir(path: Path):
             return
         except PermissionError:
             time.sleep(0.1 * (attempt + 1))
-    path.mkdir(parents=True, exist_ok=True)  # final try
+    path.mkdir(parents=True, exist_ok=True)
 
 # ---- Log location helper ----
 
@@ -144,11 +144,78 @@ def locate_requests_log(instance_name: str, start_dir: Path) -> Path | None:
         cur = cur.parent
     return None
 
-# ---- FTS block writer (final corrected layout) ----
+# ---- Override loader ----
+
+def load_overrides():
+    overrides_path = Path("overrides.json")
+    if not overrides_path.exists():
+        return {}
+    try:
+        return json.loads(overrides_path.read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+
+# ---- Derive relayer IP via key overlap (tightened) ----
+
+def derive_relayer_ip_from_overlap(inst: Path) -> str:
+    MIN_OVERLAP = 3
+    MIN_RATIO = 0.5  # at least 50% of relayer forwarded keys must align with a single downloader dest
+
+    parent_file_dir = inst.parent  # FileN/
+    downloader_requests = parent_file_dir / "downloader" / "downloadRequests.txt"
+    if not downloader_requests.exists():
+        return ""
+
+    dest_to_keys = defaultdict(set)
+    with downloader_requests.open("r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            try:
+                rec = parse_request_line(line)
+            except Exception:
+                continue
+            dest_ipport = rec['ip']
+            key = rec['key']
+            dest_to_keys[dest_ipport].add(key)
+
+    relayer_keys = set()
+    download_reqs_path = inst / "downloadRequests.txt"
+    if not download_reqs_path.exists():
+        return ""
+    with download_reqs_path.open("r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            try:
+                rec = parse_request_line(line)
+            except Exception:
+                continue
+            if 'insert' in rec['req_type'].lower():
+                continue
+            relayer_keys.add(rec['key'])
+
+    if not relayer_keys:
+        return ""
+
+    best_ip = ""
+    best_overlap = 0
+    best_ratio = 0.0
+    for cand_ip, keys in dest_to_keys.items():
+        overlap = len(relayer_keys & keys)
+        if overlap == 0:
+            continue
+        ratio = overlap / len(relayer_keys)
+        if overlap > best_overlap or (overlap == best_overlap and ratio > best_ratio):
+            best_overlap = overlap
+            best_ratio = ratio
+            best_ip = cand_ip
+
+    if best_overlap >= MIN_OVERLAP and best_ratio >= MIN_RATIO:
+        return best_ip
+    return ""
+
+# ---- FTS block writer (corrected) ----
 
 def write_fts_block_final(out_path: Path, relayer_name: str, overrides: dict, le_ipport: str,
                           run_start_excel: str, run_end_excel: str,
-                          detail_rows: list[str], manifest_key: str):
+                          detail_rows: list[str], manifest_key: str, subject_ip: str):
     le_ip, le_port = (le_ipport.split(':', 1) + [""])[:2]
     with out_path.open("w", encoding="utf-8") as f:
         f.write(f"{relayer_name}\t\n")
@@ -156,7 +223,7 @@ def write_fts_block_final(out_path: Path, relayer_name: str, overrides: dict, le
         f.write(f"Iccacops Status\t{overrides.get('Iccacops Status','')}\n")
         f.write(f"ISP:\t{overrides.get('ISP','')}\n")
         f.write(f"Location\t{overrides.get('Location','')}\n")
-        f.write(f"IP Address\t{overrides.get('IP Address', le_ip)}\n")
+        f.write(f"IP Address\t{subject_ip}\n")  # relayer's IP
         f.write(f"Location ID\t{overrides.get('Location ID','')}\n")
         f.write(f"LE ID\t{le_port}\n")
         f.write(f"Filename\t{overrides.get('Filename','')}\n")
@@ -190,7 +257,6 @@ def process_instance_pair(manifest_name, instance_name):
     if prob_report_path.exists() and not FORCE_REPROCESS:
         return
 
-    # copy manifest only; avoid duplicating big logs
     shutil.copy2(manifest_path, inst_dir / "downloadKeys.txt")
     process_instance(inst_dir, is_downloader=(instance_name == "downloader"))
 
@@ -439,7 +505,7 @@ def process_instance(instance_folder: Path, is_downloader=False):
             if num_runs > 0:
                 report_lines.append(f"Local Rate of False Positive Runs: {100.0 * (false_positive / num_runs):.2f} %")
             else:
-                report_lines.append("Local Rate of False Positive Runs: Not Applicable")   
+                report_lines.append("Local Rate of False Positive Runs: Not Applicable")
         else:
             report_lines.append(f"Number of True Positive Runs: {true_positive}")
             if num_runs > 0:
@@ -464,15 +530,6 @@ def process_instance(instance_folder: Path, is_downloader=False):
 
 # ---- Post-processing helpers ----
 
-def load_overrides():
-    overrides_path = Path("overrides.json")
-    if not overrides_path.exists():
-        return {}
-    try:
-        return json.loads(overrides_path.read_text(encoding='utf-8'))
-    except Exception:
-        return {}
-
 def extract_peer_requests_for_instance(is_downloader_flag):
     inst = Path.cwd()
     relayer_name = inst.name
@@ -480,6 +537,8 @@ def extract_peer_requests_for_instance(is_downloader_flag):
     download_requests = inst / "downloadRequests.txt"
     if not prob_report.exists() or not download_requests.exists():
         return
+
+    # Gather IP:port runs that passed Levine
     ip_ports = []
     for line in read_and_split(prob_report):
         m = PASS_RUN_RE.match(line.strip())
@@ -487,25 +546,44 @@ def extract_peer_requests_for_instance(is_downloader_flag):
             ip_ports.append(m.group(1))
     if not ip_ports:
         return
+
+    # Read all request lines
     req_lines = download_requests.read_text(encoding='utf-8', errors='ignore').splitlines()
 
     overrides_all = load_overrides()
 
+    # Extract total blocks and unique requests sent (data blocks)
+    total_blocks = ""
+    data_blocks = ""
+    for line in read_and_split(prob_report):
+        low = line.lower()
+        if "total number of blocks for file:" in low:
+            parts = line.split(":", 1)
+            if len(parts) > 1:
+                total_blocks = parts[1].strip()
+        if "unique requests sent:" in low:
+            parts = line.split(":", 1)
+            if len(parts) > 1:
+                data_blocks = parts[1].strip()
+
+    # Average peers (not strictly needed here)
     avg_peers = 0.0
     if (inst / "avgPeers.txt").exists():
         try:
-            with open("avgPeers.txt","r") as f:
+            with open("avgPeers.txt", "r") as f:
                 avg_peers = float(f.read().strip())
         except:
             avg_peers = 0.0
 
+    # Percent of file requested (downloader)
     percent_file_requested = ""
-    if is_downloader_flag and (inst / "probabilityReport.txt").exists():
-        for line in read_and_split(inst / "probabilityReport.txt"):
+    if is_downloader_flag:
+        for line in read_and_split(prob_report):
             if line.lower().startswith("percent of file requested:"):
-                pct = line.split(":",1)[1].strip()
+                pct = line.split(":", 1)[1].strip()
                 percent_file_requested = pct
 
+    # Manifest key
     manifest_key = ""
     dk_path = inst / "downloadKeys.txt"
     if dk_path.exists():
@@ -530,11 +608,9 @@ def extract_peer_requests_for_instance(is_downloader_flag):
             if len(parts) < 9:
                 continue
             excel_date = iso_to_excel(parts[0])
-            port = ip_port.split(':',1)[1]
+            port = ip_port.split(':', 1)[1]
             req_type = "R" if parts[1].strip() == "FNPCHKDataRequest" else ("I" if parts[1].strip() == "FNPInsertRequest" else "?")
             htl = parts[4].strip()
-            total_blocks = ""
-            data_blocks = ""
             peers = parts[8].strip()
             le_ip = escape_for_excel(parts[5].strip())
             split_key = escape_for_excel(parts[2].strip())
@@ -564,8 +640,11 @@ def extract_peer_requests_for_instance(is_downloader_flag):
                 run_start_excel = excels[0]
                 run_end_excel = excels[-1]
 
-        key_name = f"{relayer_name}_{ip_port.replace(':','_')}"
+        key_name = f"{relayer_name}_{ip_port.replace(':', '_')}"
         overrides = overrides_all.get(key_name, {})
+
+        # Derive relayer/source IP confidently by key overlap
+        subject_ip = derive_relayer_ip_from_overlap(inst)
 
         fts_path = inst / f"FTS-{safe}.txt"
         write_fts_block_final(
@@ -577,6 +656,7 @@ def extract_peer_requests_for_instance(is_downloader_flag):
             run_end_excel=run_end_excel,
             detail_rows=detail_rows,
             manifest_key=manifest_key,
+            subject_ip=subject_ip or overrides.get("IP Address", "")
         )
 
 def generate_false_positive_index(file_numbers):
@@ -806,10 +886,17 @@ def main():
         max_workers = max(1, (os.cpu_count() or 1) - 1)
         print(f"[START] parallel execution using {max_workers} workers, force={'yes' if FORCE_REPROCESS else 'no'}")
         with ProcessPoolExecutor(max_workers=max_workers) as exe:
-            future_to_job = {exe.submit(process_instance_pair, m, i): (m, i) for m, i in jobs}
+            future_to_job = {}
+            submit_times = {}
+            for m, i in jobs:
+                fut = exe.submit(process_instance_pair, m, i)
+                future_to_job[fut] = (m, i)
+                submit_times[fut] = time.time()
+
             for fut in as_completed(future_to_job):
                 manifest, inst = future_to_job[fut]
-                job_start = time.time()
+                real_start = submit_times.get(fut, time.time())
+                job_elapsed = time.time() - real_start
                 try:
                     fut.result()
                     job_status = "OK"
@@ -817,7 +904,6 @@ def main():
                     failed_jobs.append((manifest, inst, str(e)))
                     print(f"[ERROR] {manifest}/{inst} failed: {e}")
                     job_status = "FAIL"
-                job_elapsed = time.time() - job_start
 
                 if avg_duration is None:
                     avg_duration = job_elapsed
