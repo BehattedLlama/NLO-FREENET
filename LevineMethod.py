@@ -14,7 +14,7 @@ import time
 # ---- Globals controlled by CLI ----
 FORCE_REPROCESS = False
 
-# ---- Constants matching Levine simplifying assumption constants and run logic ----
+# ---- Constants matching Levine 2017 Whitepaper constants ----
 RUN_MIN_REQUESTS = 20
 PROB_THRESHOLD = 0.98
 
@@ -454,24 +454,15 @@ def process_instance(instance_folder: Path, is_downloader=False):
         unique_peers_count = len(per_peer)
 
         for idx, peer in enumerate(peer_list_for_report):
-            requests = 0
-            if idx < len(htl_lines):
-                parts = htl_lines[idx].split(',')
-                vals = []
-                for part in parts:
-                    if ':' in part:
-                        _, num = part.split(':',1)
-                        try:
-                            vals.append(int(num.strip()))
-                        except:
-                            vals.append(0)
-                if vals:
-                    requests = max(vals)
-            inserts_cnt = int(inserts_list[idx]) if idx < len(inserts_list) else 0
-            duplicates_cnt = int(duplicates_list[idx]) if idx < len(duplicates_list) else 0
+            # Match Excel behavior: "requests" is unique non-insert requests (Total Unique Requests)
+            requests = int(data_requests_num_list[idx]) if idx < len(data_requests_num_list) and data_requests_num_list[idx].isdigit() else 0
+            inserts_cnt = int(inserts_list[idx]) if idx < len(inserts_list) and inserts_list[idx].isdigit() else 0
+            duplicates_cnt = int(duplicates_list[idx]) if idx < len(duplicates_list) and duplicates_list[idx].isdigit() else 0
+
             adj_requests = requests - inserts_cnt - 3 * duplicates_cnt
             if adj_requests < 0:
                 adj_requests = 0
+
             if requests >= RUN_MIN_REQUESTS:
                 num_runs += 1
                 prob = calc_even_share_probability(avg_peers, T, adj_requests)
@@ -538,7 +529,6 @@ def extract_peer_requests_for_instance(is_downloader_flag):
     if not prob_report.exists() or not download_requests.exists():
         return
 
-    # Gather IP:port runs that passed Levine
     ip_ports = []
     for line in read_and_split(prob_report):
         m = PASS_RUN_RE.match(line.strip())
@@ -547,12 +537,9 @@ def extract_peer_requests_for_instance(is_downloader_flag):
     if not ip_ports:
         return
 
-    # Read all request lines
     req_lines = download_requests.read_text(encoding='utf-8', errors='ignore').splitlines()
-
     overrides_all = load_overrides()
 
-    # Extract total blocks and unique requests sent (data blocks)
     total_blocks = ""
     data_blocks = ""
     for line in read_and_split(prob_report):
@@ -566,7 +553,6 @@ def extract_peer_requests_for_instance(is_downloader_flag):
             if len(parts) > 1:
                 data_blocks = parts[1].strip()
 
-    # Average peers (not strictly needed here)
     avg_peers = 0.0
     if (inst / "avgPeers.txt").exists():
         try:
@@ -575,7 +561,6 @@ def extract_peer_requests_for_instance(is_downloader_flag):
         except:
             avg_peers = 0.0
 
-    # Percent of file requested (downloader)
     percent_file_requested = ""
     if is_downloader_flag:
         for line in read_and_split(prob_report):
@@ -583,7 +568,6 @@ def extract_peer_requests_for_instance(is_downloader_flag):
                 pct = line.split(":", 1)[1].strip()
                 percent_file_requested = pct
 
-    # Manifest key
     manifest_key = ""
     dk_path = inst / "downloadKeys.txt"
     if dk_path.exists():
@@ -603,6 +587,8 @@ def extract_peer_requests_for_instance(is_downloader_flag):
                 f.write(l + "\n")
 
         detail_rows = []
+        total_blocks_for_detail = total_blocks
+        data_blocks_for_detail = data_blocks
         for line in matches:
             parts = line.strip().split(',')
             if len(parts) < 9:
@@ -619,8 +605,8 @@ def extract_peer_requests_for_instance(is_downloader_flag):
                 port,
                 req_type,
                 htl,
-                total_blocks,
-                data_blocks,
+                total_blocks_for_detail,
+                data_blocks_for_detail,
                 peers,
                 le_ip,
                 split_key
@@ -643,7 +629,6 @@ def extract_peer_requests_for_instance(is_downloader_flag):
         key_name = f"{relayer_name}_{ip_port.replace(':', '_')}"
         overrides = overrides_all.get(key_name, {})
 
-        # Derive relayer/source IP confidently by key overlap
         subject_ip = derive_relayer_ip_from_overlap(inst)
 
         fts_path = inst / f"FTS-{safe}.txt"
