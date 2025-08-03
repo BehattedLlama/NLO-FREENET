@@ -2,7 +2,7 @@
 
 ## Overview
 
-`LevineMethod.py` is a unified, parallel, resumable forensics-grade pipeline that replaces the previous multi-script toolchain. It ingests Freenet request logs and download key manifests, applies the Levine Method algorithm to detect runs and compute false/true positive statistics, and emits all intermediate and summary artifacts needed for audit, discovery, and direct ingestion into the FTS Excel tool (via `FTS-<ipport>.txt` files).
+`LevineMethod.py` is a unified, parallel, resumable forensics-grade pipeline that replaces the previous multi-script toolchain. It ingests Freenet request logs and download key manifests, applies the Levine Method algorithm to detect runs and compute false/true positive statistics, and emits all intermediate and summary artifacts needed for audit, discovery, and direct ingestion into the FTS Excel tool (via `FTS-<ipport>.txt` files). The script assumes that the user can independently create the required Freenet nodes, connect them, log requests for test file downloads, and collect the relevant logs to a working folder with names matching the user's instanceNames.txt (default instance names are downloader, relayer1, relayer2 . . . relayerN).
 
 ## Required inputs (working directory)
 
