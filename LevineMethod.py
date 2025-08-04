@@ -26,7 +26,7 @@ PASS_RUN_RE = re.compile(
 FP_LINE_RE = re.compile(r'Number of False Positive Runs:\s*(\d+)', re.IGNORECASE)
 
 # ---- Numeric helpers (Levine method) ----
-
+# Consider using scipy.stats.binom to avoid reimplementing
 def log_binomial_pmf(k, n, p):
     if p <= 0 or p >= 1:
         if p == 0:
@@ -68,6 +68,7 @@ def parse_request_line(line):
     request_loc = parts[3]
     htl = parts[4]
     ip = parts[5]
+    # it looks like parts 6 and 7 are ignored -- just for completeness, maybe document what they are and why they are not needed
     try:
         num_peers = float(parts[8])
     except Exception:
@@ -105,7 +106,7 @@ def iso_to_excel(iso_str):
     except ValueError:
         try:
             dt = datetime.strptime(iso_str, "%Y-%m-%dT%H:%M:%S")
-        except Exception:
+        except Exception:  # maybe make this ValueError to make sure another error isn't getting hidden
             return ""
     epoch = datetime(1899, 12, 30)
     delta = dt - epoch
@@ -185,7 +186,7 @@ def derive_relayer_ip_from_overlap(inst: Path) -> str:
         for line in f:
             try:
                 rec = parse_request_line(line)
-            except Exception:
+            except Exception:     # if might be good to make this a narrower error type and/or to log lines that fail, to make sure data is not lost
                 continue
             if 'insert' in rec['req_type'].lower():
                 continue
@@ -247,6 +248,7 @@ def process_instance_pair(manifest_name, instance_name):
         print(f"[WARN] manifest missing: {manifest_name}")
         return
     if not manifest_name.startswith("downloadKeys_File") or not manifest_name.endswith(".txt"):
+        # maybe print something here, or raise an exception, to make sure no errors are getting dropped
         return
     file_number = manifest_name[len("downloadKeys_File"):-4]
     file_dir = base / f"File{file_number}"
@@ -282,7 +284,7 @@ def process_instance(instance_folder: Path, is_downloader=False):
             for line in f:
                 if not line.strip():
                     continue
-                if any(k in line for k in keys):
+                if any(k in line for k in keys):     # if this is a performance bottleneck, it can be sped up
                     filtered_lines.append(line.rstrip("\n"))
                     try:
                         rec = parse_request_line(line)
@@ -439,9 +441,9 @@ def process_instance(instance_folder: Path, is_downloader=False):
         adj_requests_sent = sum(int(x) for x in data_requests_num_list if x.isdigit())
         try:
             with open("avgPeers.txt", "r") as f:
-                avg_peers = float(f.read().strip())
+                avg_peers = float(f.read().strip())   # do we need to read this back -- it was computed above
         except Exception:
-            avg_peers = 0.0
+            avg_peers = 0.0  # is this an error if it happens? if so, maybe log it
         with open("downloadKeys.txt", "r") as f:
             blocks = [l for l in (x.rstrip("\n") for x in f) if l != ""]
         total_blocks = len(blocks)
@@ -455,6 +457,8 @@ def process_instance(instance_folder: Path, is_downloader=False):
 
         for idx, peer in enumerate(peer_list_for_report):
             # Match Excel behavior: "requests" is unique non-insert requests (Total Unique Requests)
+
+            # it's not obvious here that peer_list_for_report and data_requests_num_list are the same length and aligned
             requests = int(data_requests_num_list[idx]) if idx < len(data_requests_num_list) and data_requests_num_list[idx].isdigit() else 0
             inserts_cnt = int(inserts_list[idx]) if idx < len(inserts_list) and inserts_list[idx].isdigit() else 0
             duplicates_cnt = int(duplicates_list[idx]) if idx < len(duplicates_list) and duplicates_list[idx].isdigit() else 0
@@ -527,6 +531,7 @@ def extract_peer_requests_for_instance(is_downloader_flag):
     prob_report = inst / "probabilityReport.txt"
     download_requests = inst / "downloadRequests.txt"
     if not prob_report.exists() or not download_requests.exists():
+        # it might be good to log all errors
         return
 
     ip_ports = []
@@ -535,6 +540,7 @@ def extract_peer_requests_for_instance(is_downloader_flag):
         if m:
             ip_ports.append(m.group(1))
     if not ip_ports:
+        # again, if this happens, is it ok to fail silently?
         return
 
     req_lines = download_requests.read_text(encoding='utf-8', errors='ignore').splitlines()
@@ -579,6 +585,7 @@ def extract_peer_requests_for_instance(is_downloader_flag):
     for ip_port in ip_ports:
         matches = [l for l in req_lines if ip_port in l]
         if not matches:
+            # ok to fail silently?
             continue
         safe = ip_port.replace('.', '_').replace(':', '_')
         out_req = inst / f"requests_{safe}.txt"
@@ -653,7 +660,7 @@ def generate_false_positive_index(file_numbers):
             if not folder.exists():
                 continue
             outf.write(f"File{num}:\n")
-            for i in range(1, 36):
+            for i in range(1, 36):   # should this 36 be hard coded? are there never more than 36?
                 relayer_dir = folder / f"Relayer{i}"
                 prob_file = relayer_dir / "probabilityReport.txt"
                 if not prob_file.exists():
@@ -689,7 +696,7 @@ def generate_per_file_reports(file_numbers):
                     f_full.write("Downloader:\n")
                     for line in read_and_split(pr):
                         f_full.write(f"  {line}\n")
-            for i in range(1, 36):
+            for i in range(1, 36):    # same question here about hard coding this limit
                 rel_dir = folder / f"Relayer{i}"
                 pr = rel_dir / "probabilityReport.txt"
                 if not pr.exists():
