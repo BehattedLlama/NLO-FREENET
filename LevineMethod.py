@@ -11,21 +11,21 @@ from datetime import datetime
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import time
 
-# ---- Globals controlled by CLI ----
+# Globals controlled by CLI 
 FORCE_REPROCESS = False
 
-# ---- Constants matching Levine 2017 Whitepaper constants ----
+# Constants matching Levine 2017 Whitepaper constants 
 RUN_MIN_REQUESTS = 20
 PROB_THRESHOLD = 0.98
 
-# ---- Regexes for postprocessing ----
+# Regexes for postprocessing 
 PASS_RUN_RE = re.compile(
     r'^(\d+\.\d+\.\d+\.\d+:\d+)\s+had a run\. Requests: \d+, Duplicates: \d+, Inserts: \d+, Adj\. Requests: \d+, Passes Levine: Yes, Levine Downloader probability: ([\d\.]+)',
     re.IGNORECASE
 )
 FP_LINE_RE = re.compile(r'Number of False Positive Runs:\s*(\d+)', re.IGNORECASE)
 
-# ---- Numeric helpers (Levine method) ----
+# Numeric helpers (Levine method) 
 
 def log_binomial_pmf(k, n, p):
     if p <= 0 or p >= 1:
@@ -56,7 +56,7 @@ def calc_even_share_probability(g, T, r):
         return 0.0
     return numerator / denom
 
-# ---- Parsing helpers ----
+# Parsing helpers 
 
 def parse_request_line(line):
     parts = line.rstrip("\n").split(',')
@@ -112,7 +112,7 @@ def iso_to_excel(iso_str):
     serial = delta.days + (delta.seconds + delta.microseconds / 1e6) / 86400
     return f"{serial:.4f}"
 
-# ---- Excel safety escaping ----
+# Excel safety escaping 
 
 def escape_for_excel(cell: str) -> str:
     if not cell:
@@ -121,7 +121,7 @@ def escape_for_excel(cell: str) -> str:
         return "'" + cell
     return cell
 
-# ---- Directory helpers to mitigate transient Windows race conditions ----
+# Directory helpers to mitigate transient Windows race conditions 
 
 def ensure_dir(path: Path):
     for attempt in range(5):
@@ -132,7 +132,7 @@ def ensure_dir(path: Path):
             time.sleep(0.1 * (attempt + 1))
     path.mkdir(parents=True, exist_ok=True)
 
-# ---- Log location helper ----
+# Log location helper 
 
 def locate_requests_log(instance_name: str, start_dir: Path) -> Path | None:
     filename = f"requests_{instance_name}.log"
@@ -144,7 +144,7 @@ def locate_requests_log(instance_name: str, start_dir: Path) -> Path | None:
         cur = cur.parent
     return None
 
-# ---- Override loader ----
+# Override loader 
 
 def load_overrides():
     overrides_path = Path("overrides.json")
@@ -155,7 +155,7 @@ def load_overrides():
     except Exception:
         return {}
 
-# ---- Derive relayer IP via key overlap (tightened) ----
+# Derive relayer IP via key overlap
 
 def derive_relayer_ip_from_overlap(inst: Path) -> str:
     MIN_OVERLAP = 3
@@ -211,7 +211,7 @@ def derive_relayer_ip_from_overlap(inst: Path) -> str:
         return best_ip
     return ""
 
-# ---- FTS block writer (corrected) ----
+# FTS block writer 
 
 def write_fts_block_final(out_path: Path, relayer_name: str, overrides: dict, le_ipport: str,
                           run_start_excel: str, run_end_excel: str,
@@ -238,7 +238,7 @@ def write_fts_block_final(out_path: Path, relayer_name: str, overrides: dict, le
         for row in detail_rows:
             f.write(row.rstrip("\n") + "\n")
 
-# ---- Core logic for a single (manifest, instance) pair ----
+# Core logic for a single (manifest, instance) pair 
 
 def process_instance_pair(manifest_name, instance_name):
     base = Path.cwd()
@@ -519,7 +519,7 @@ def process_instance(instance_folder: Path, is_downloader=False):
     finally:
         os.chdir(cwd)
 
-# ---- Post-processing helpers ----
+# Post-processing helpers 
 
 def extract_peer_requests_for_instance(is_downloader_flag):
     inst = Path.cwd()
@@ -653,7 +653,7 @@ def generate_false_positive_index(file_numbers):
             if not folder.exists():
                 continue
             outf.write(f"File{num}:\n")
-            for i in range(1, 36):
+            for i in range(1, 36):  # hard coded for our 36-node setup, will be updated in future to determine upper range by the number of entries in instanceNames.txt.
                 relayer_dir = folder / f"Relayer{i}"
                 prob_file = relayer_dir / "probabilityReport.txt"
                 if not prob_file.exists():
@@ -689,7 +689,7 @@ def generate_per_file_reports(file_numbers):
                     f_full.write("Downloader:\n")
                     for line in read_and_split(pr):
                         f_full.write(f"  {line}\n")
-            for i in range(1, 36):
+            for i in range(1, 36): # hard coded for our 36-node setup, will be updated in future to determine upper range by the number of entries in instanceNames.txt.
                 rel_dir = folder / f"Relayer{i}"
                 pr = rel_dir / "probabilityReport.txt"
                 if not pr.exists():
@@ -701,7 +701,7 @@ def generate_per_file_reports(file_numbers):
         dup_report = folder / "duplicatesReport.txt"
         with dup_report.open("w", encoding="utf-8") as f_dup:
             f_dup.write(f"Duplicates report for File{num}\n")
-            for i in range(1, 36):
+            for i in range(1, 36): # hard coded for our 36-node setup, will be updated in future to determine upper range by the number of entries in instanceNames.txt.
                 rel_dir = folder / f"Relayer{i}"
                 dups = rel_dir / "duplicates.txt"
                 if dups.exists():
@@ -711,7 +711,7 @@ def generate_per_file_reports(file_numbers):
         ins_report = folder / "insertsReport.txt"
         with ins_report.open("w", encoding="utf-8") as f_ins:
             f_ins.write(f"Inserts report for File{num}\n")
-            for i in range(1, 36):
+            for i in range(1, 36): # hard coded for our 36-node setup, will be updated in future to determine upper range by the number of entries in instanceNames.txt.
                 rel_dir = folder / f"Relayer{i}"
                 ins = rel_dir / "inserts.txt"
                 if ins.exists():
@@ -721,7 +721,7 @@ def generate_per_file_reports(file_numbers):
         avg_timing = folder / "avgTimingReport.txt"
         with avg_timing.open("w", encoding="utf-8") as f_avg:
             f_avg.write(f"Average timing (intervals) for File{num}\n")
-            for i in range(1, 36):
+            for i in range(1, 36): # hard coded for our 36-node setup, will be updated in future to determine upper range by the number of entries in instanceNames.txt.
                 rel_dir = folder / f"Relayer{i}"
                 avg_int = rel_dir / "avgIntervals.txt"
                 if avg_int.exists():
@@ -731,7 +731,7 @@ def generate_per_file_reports(file_numbers):
         requests_txt = folder / "Requests.txt"
         with requests_txt.open("w", encoding="utf-8") as f_req:
             f_req.write(f"Relayers with pass runs for File{num}\n")
-            for i in range(1, 36):
+            for i in range(1, 36): # hard coded for our 36-node setup, will be updated in future to determine upper range by the number of entries in instanceNames.txt.
                 rel_dir = folder / f"Relayer{i}"
                 pr = rel_dir / "probabilityReport.txt"
                 if not pr.exists():
@@ -759,7 +759,7 @@ def generate_per_file_reports(file_numbers):
         ]
         with csv_path.open("w", encoding="utf-8") as f_csv:
             f_csv.write(",".join(headers) + "\n")
-            for i in range(1, 36):
+            for i in range(1, 36): # hard coded for our 36-node setup, will be updated in future to determine upper range by the number of entries in instanceNames.txt.
                 rel_dir = folder / f"Relayer{i}"
                 if not rel_dir.exists():
                     continue
@@ -782,7 +782,7 @@ def generate_per_file_reports(file_numbers):
                             ]
                             f_csv.write(",".join(row) + "\n")
 
-# ---- Entry point with parallelization, resume, and progress summary ----
+# Entry point with parallelization, resume, and progress summary 
 
 def main():
     global FORCE_REPROCESS
